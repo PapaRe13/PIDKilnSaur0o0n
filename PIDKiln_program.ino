@@ -586,7 +586,7 @@ uint32_t now;
         // Alle 10 Sekunden einen Log-Punkt schreiben (da Schleife ~1x pro Sekunde läuft)
         static uint8_t log_counter = 0;
         log_counter++;
-        if(log_counter >= 10){
+        if(log_counter >= 120){
         log_counter = 0;
         if(CurrentLogFile) Log_Temperature_Point();
         }
