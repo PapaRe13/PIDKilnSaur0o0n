@@ -148,7 +148,7 @@ function chart_update(){
     })
     .catch(err => console.log("Chart update error:", err));
 
-  chart_update_id = setTimeout(chart_update, 30000); // alle 30 Sekunden
+  chart_update_id = setTimeout(chart_update, 1200000); // alle 60 Sekunden
 }
 
 // Starte das Update, wenn ein Programm läuft
