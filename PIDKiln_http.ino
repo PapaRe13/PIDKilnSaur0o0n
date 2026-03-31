@@ -8,6 +8,9 @@
 #include <U8g2lib.h>
 #include <Update.h>
 
+// Für die Chart-Logik - aktuelle Log-Datei
+extern const char* CURRENT_LOG_PATH;   // extern weil die echte Definition in PIDKiln_programm.ino liegt
+
 // Other variables
 //
 String template_str;  // Stores template pareser output
@@ -333,14 +336,26 @@ char *str;
        tmp+=",y:"+String(Program_run[a].temp)+"}";
     }
     return tmp;
+  // }else if(var == "LOG_FILE"){
+  //   if(CSVFile) return CSVFile.path();
+  //   else return String("/logs/test.csv");
+  // }else if(var == "PROGRAM_NAME"){
+  //   return String(Program_run_name);
+  // }else if(var == "CONFIG"){        // if we have log fie to show - show it on graph, otherwise show just program graph
+  //   if(CSVFile) return String("config_with");
+  //   else return String("config_without");
+  // }
   }else if(var == "LOG_FILE"){
-    if(CSVFile) return CSVFile.path();
-    else return String("/logs/test.csv");
-  }else if(var == "PROGRAM_NAME"){
-    return String(Program_run_name);
-  }else if(var == "CONFIG"){        // if we have log fie to show - show it on graph, otherwise show just program graph
-    if(CSVFile) return String("config_with");
-    else return String("config_without");
+  // Immer current.csv verwenden, wenn sie existiert
+  if(SPIFFS.exists(CURRENT_LOG_PATH))
+    return String(CURRENT_LOG_PATH);
+  else
+    return String("/logs/test.csv");
+  }else if(var == "CONFIG"){
+  if(SPIFFS.exists(CURRENT_LOG_PATH))
+    return String("config_with");
+  else
+    return String("config_without");
   }
   return String();
 }

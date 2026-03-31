@@ -1,6 +1,8 @@
 #include <PID_v1.h>
 #include <Syslog.h>
 
+#include <LittleFS.h>
+#define SPIFFS LittleFS
 /* 
 ** Some definitions - usually you should not edit this, but you may want to
 */
@@ -305,8 +307,8 @@ File CSVFile,LOGFile;
 ** Other stuff
 **
 */
-const char *PVer = "PIDKiln v1.5";
-const char *PDate = "2024.12.18";
+const char *PVer = "PIDKiln v1.6";
+const char *PDate = "2025.03.31";
 
 // If defined debug - do debug, otherwise comment out all debug lines
 #define DBG if(DEBUG)

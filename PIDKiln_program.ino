@@ -5,6 +5,9 @@
 #include <PID_v1.h>
 #include <SPI.h>
 
+File CurrentLogFile;
+const char* CURRENT_LOG_PATH = "/logs/current.csv";
+
 // Other variables
 //
 hw_timer_t *timer = NULL;
@@ -68,19 +71,20 @@ int multi=1;
 // Load program from file to memory - return 0 if success
 //
 uint8_t Load_program(char *file){
-String line;
-char file_path[32];
-uint8_t err=0;
-uint16_t pos=0;
-int sel;
-File prg;
+  String line;
+  char file_path[32];
+  uint8_t err = 0;
+  int commentPos;
+  int sel = -1;                    // <--- HIER FEHLTE DIE DEKLARATION
+  File prg;
 
   if(file){  // if function got an argument - this can happen if you want to validate new program uploaded by http
     sprintf(file_path,"%s/%s",PRG_Directory,file);
     DBG dbgLog(LOG_DEBUG,"[PRG] Got pointer to load:'%s'\n",file);
     Program_name=String(file);
   }else{
-    if((sel=Find_selected_program())<0) return Cleanup_program(1);
+    sel = Find_selected_program();               // <--- korrigiert
+    if(sel < 0) return Cleanup_program(1);
     sprintf(file_path,"%s/%s",PRG_Directory,Programs_DIR[sel].filename);
     Program_name=String(Programs_DIR[sel].filename);
   }
@@ -103,10 +107,11 @@ File prg;
           Program_desc=line;
         }
       }else{
-        // Sanitize every line - if it's have a comment - strip ip, then check if this are only numbers and ":" - otherwise fail
-        if(pos=line.indexOf("#")){
-          line=line.substring(0,pos);
-          line.trim(); // trim again after removing comment
+        // Kommentar am Zeilenende sicher entfernen
+        commentPos = line.indexOf('#');
+        if(commentPos >= 0){
+          line = line.substring(0, commentPos);
+          line.trim();
         }
         
         if(line.length()>15) return Cleanup_program(2);  // program line too long
@@ -119,7 +124,8 @@ File prg;
     if(!Program_desc.length()) Program_desc="No description";   // if after reading file program still has no description - add it
     
     return 0;
-  }return Cleanup_program(1);
+  }
+  return Cleanup_program(1);
 }
 
 
@@ -293,7 +299,7 @@ char file[32];
 // Cleanly end program
 //
 void END_Program(){
-
+  Close_Current_Log_File();
   DBG dbgLog(LOG_INFO,"[PRG] Ending program cleanly\n");
   Program_run_state=PR_ENDED;
   KilnPID.SetMode(MANUAL);
@@ -310,7 +316,7 @@ void END_Program(){
 // Abort program if something goes wrong - this has no real meaning now - perhaps later...
 //
 void ABORT_Program(uint8_t error){
-
+  Close_Current_Log_File();
   if(Program_run_state==PR_RUNNING || Program_run_state==PR_PAUSED){
     Program_error=error;
     DBG dbgLog(LOG_INFO,"[PRG] Aborting program with error: %d\n",Program_error);
@@ -435,6 +441,46 @@ static boolean is_it_dwell=false;
   if(Program_run_state!=PR_PAUSED && Program_run_state!=PR_THRESHOLD) set_temp+=temp_incr;  // increase desire temperature...
 }
 
+// Neue Log-Datei erstellen und alte löschen
+void Start_New_Log_File() {
+  if (SPIFFS.exists(CURRENT_LOG_PATH)) {
+    SPIFFS.remove(CURRENT_LOG_PATH);
+    DBG dbgLog(LOG_INFO, "[LOG] Old current.csv deleted\n");
+  }
+
+  CurrentLogFile = SPIFFS.open(CURRENT_LOG_PATH, "w");
+  if (!CurrentLogFile) {
+    DBG dbgLog(LOG_ERR, "[LOG] Failed to create %s\n", CURRENT_LOG_PATH);
+    return;
+  }
+
+  CurrentLogFile.println("time,actual_temp,set_temp");
+  CurrentLogFile.flush();
+  DBG dbgLog(LOG_INFO, "[LOG] New log file created: %s\n", CURRENT_LOG_PATH);
+}
+
+// Log-Datei schließen
+void Close_Current_Log_File() {
+  if (CurrentLogFile) {
+    CurrentLogFile.close();
+    DBG dbgLog(LOG_INFO, "[LOG] current.csv closed\n");
+  }
+}
+
+// Einen Temperaturpunkt loggen
+void Log_Temperature_Point() {
+  if (!CurrentLogFile) return;
+
+  time_t now = time(NULL);
+  struct tm timeinfo;
+  if (!localtime_r(&now, &timeinfo)) return;
+
+  char timestamp[25];
+  strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &timeinfo);
+
+  CurrentLogFile.printf("%s,%.1f,%.1f\n", timestamp, kiln_temp, set_temp);
+  CurrentLogFile.flush();
+}
 
 // Start running the in memory program
 //
@@ -466,6 +512,13 @@ void START_Program(){
     Init_log_file();
     Add_log_line();
   }
+
+// === NEUER LOGGING TEIL ===
+  if(Prefs[PRF_LOG_WINDOW].value.uint16 > 0){
+    Start_New_Log_File();
+    Log_Temperature_Point();        // ersten Punkt sofort speichern
+  }
+  // ===========================  
 }
 
 
@@ -530,6 +583,14 @@ uint32_t now;
         // Do all the program recalc
         Program_calculate_steps();
 
+        // Alle 10 Sekunden einen Log-Punkt schreiben (da Schleife ~1x pro Sekunde läuft)
+        static uint8_t log_counter = 0;
+        log_counter++;
+        if(log_counter >= 10){
+        log_counter = 0;
+        if(CurrentLogFile) Log_Temperature_Point();
+        }
+        
         if(cnt1==6){
           SAFETY_Check();
         }else if(cnt1==9){
